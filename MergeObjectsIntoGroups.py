@@ -24,79 +24,90 @@ groups = []
 
 #check seleted objects have groups
 for group in bpy.data.groups:
-    for o in selobj:
-        if group.name == o.name:
-            #make a list of all objects in group
+    for selectedObject in selobj:
+        if group.name == selectedObject.name:
             print ("starting " + group.name)
-            objInGroup = []
+
+            #make a list of all objects in group
+            objectsInGroup = []
             for obj in group.objects:
                 if obj.type == "MESH":
-                    objInGroup.append(obj)
+                    objectsInGroup.append(obj)
 
-            #find object corresponding to group (object to replace has to be named the same as group)
-            for obj in bpy.data.objects:
-                if obj.name == group.name:
-                    print("found object for "+ obj.name)
-                    oldObj = obj
-                    oldObjmatrix = obj.matrix_world
-                    objName = obj.name
-                
-            #go though list of objects and..
-            objInGroupNew = []
-            for obj in objInGroup:
-                print ("obj name = " + obj.name) 
-                if obj.name != objName:
-                    objData = obj.data.copy()         #get data from object
+            #find object named same as group to be replaced
+            try: 
+                objectToBeReplaced = bpy.data.objects[group.name]
 
-                    ob = bpy.data.objects.new("MergeMe"+ obj.name[-4:], objData)   #add that data to a new object
-                    ob.matrix_world = obj.matrix_world              #in the same place as the old one
-                                         
-                    scn.objects.link(ob)        #add to scene
-                    objInGroupNew.append(ob)    #add to list of NEW objects
-                    copyModifier(obj,ob)
+                newObjectsList = []
+                #go though list of objects in group and..
+                for objectInGroup in objectsInGroup:
+                    print ("obj name = " + objectInGroup.name) 
+                    if objectInGroup.name == objectToBeReplaced.name:
+                        continue
+
+                    objData = objectInGroup.data.copy()         #get data from object
+
+                    obj = bpy.data.objects.new("MergeMe"+ objectInGroup.name[-4:], objData)   #add that data to a new object
+                    obj.matrix_world = objectInGroup.matrix_world              #in the same place as the old one
+                                        
+                    scn.objects.link(obj)        #add to scene
+                    newObjectsList.append(obj)    #add to list of NEW objects
+
+                    for vertexGroup in objectInGroup.vertex_groups:  
+                        obj.vertex_groups.new(vertexGroup.name)
+                    copyModifier(objectInGroup,obj)
                     
                     scn.update()
 
-            #rename old object ready for delete
-            oldObj.name = "DELETEME"
+                #rename old object ready for delete
+                objectToBeReplaced.name = "DELETEME"
 
-            # select all new objects
-            for obj in bpy.data.objects:
-                for objG in objInGroupNew:
-                    if obj.name in objG.name:
-                        obj.select = True 
-                        bpy.context.scene.objects.active = obj
-                        break
-                    obj.select = False
-                    
-            #apply modifiers(have been copied)
-            bpy.ops.object.convert(target='MESH')
+                # select all new objects
+                for obj in bpy.data.objects:
+                    for objG in newObjectsList:
+                        if obj.name in objG.name:
+                            obj.select = True 
+                            bpy.context.scene.objects.active = obj
+                            break
+                        obj.select = False
+                        
+                #apply modifiers(have been copied)
+                bpy.ops.object.convert(target='MESH')
+                print("a")
+                #apply scale and transform info
+                bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
 
-            #apply scale and transform info
-            bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+                #make a new object to merge all new objects into, add to scene and set transform based on old one
+                me = bpy.data.meshes.new(group.name)
+                print("b")
+                obj = bpy.data.objects.new(group.name, me)
+                print("bb")
+                scn.objects.link(obj)
+                print("cc")
+                obj.matrix_world = objectToBeReplaced.matrix_world
+                print("d")
+                #select this new object
+                obj.select = True
+                bpy.context.scene.objects.active = obj  #has to be active so join works
+                print("d")
+                #merge all new objects into one
+                bpy.ops.object.join()
+                print("e")
+                #copy layer info and modifiers from old models to new one
+                obj.layers = objectToBeReplaced.layers
+                objectToBeReplaced.select = True
+                print("f")
+                bpy.context.scene.objects.active = objectToBeReplaced
+                bpy.ops.object.make_links_data(type="MODIFIERS")
+                print("c")
+                #remove old object
+                scn.objects.unlink(objectToBeReplaced)
+                objectToBeReplaced.user_clear()
+                scn.update()
 
-            #make a new object to merge all new objects into, add to scene and set transform based on old one
-            me = bpy.data.meshes.new(group.name)
-            ob = bpy.data.objects.new(group.name, me)
-            scn.objects.link(ob)
-            ob.matrix_world = oldObjmatrix
+                print("finished " + group.name)
 
-            #select this new object
-            ob.select = True
-            bpy.context.scene.objects.active = ob  #has to be active so join works
-
-            #merge all new objects into one
-            bpy.ops.object.join()
-
-            #copy layer info and modifiers from old models to new one
-            ob.layers = oldObj.layers
-            oldObj.select = True
-            bpy.context.scene.objects.active = oldObj
-            bpy.ops.object.make_links_data(type="MODIFIERS")
-
-            #remove old object
-            scn.objects.unlink(oldObj)
-            oldObj.user_clear()
-            scn.update()
-
-            print("finished " + group.name)
+            except:
+                print ("no object found for group " + group.name)
+                
+    
